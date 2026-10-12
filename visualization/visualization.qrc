@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/shaders">
+        <file alias="surface.vert">shaders/surface.vert</file>
+        <file alias="surface.frag">shaders/surface.frag</file>
+        <file alias="wireframe.vert">shaders/wireframe.vert</file>
+        <file alias="wireframe.frag">shaders/wireframe.frag</file>
+    </qresource>
+</RCC>
