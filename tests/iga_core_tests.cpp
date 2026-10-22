@@ -180,12 +180,12 @@ void testJacobiansAndPhysicalGradients()
             for (int q0 = 0; q0 < 3; ++q0) {
                 const iga::ReferencePointData point =
                     iga::evaluateReferencePoint(space, 0, {q0, q1, q2});
-                require(point.jacobianDeterminant > 0.0, "det(J) must be positive");
+                require(point.referenceJacobianDeterminant > 0.0, "det(J) must be positive");
                 const Eigen::Matrix3d identity =
-                    space.elementControlPoints(0).transpose() * point.physicalGradients;
+                    space.elementControlPoints(0).transpose() * point.referenceGradients;
                 require((identity - Eigen::Matrix3d::Identity()).norm() < 3e-13,
                         "P^T grad_X(N) must equal I");
-                require(point.physicalGradients.colwise().sum().norm() < 2e-13,
+                require(point.referenceGradients.colwise().sum().norm() < 2e-13,
                         "physical gradients must sum to zero");
             }
         }
@@ -210,7 +210,7 @@ void testKinematicsAndBConventions()
         (space.elementControlPoints(0)
          * (rotation.transpose() - Eigen::Matrix3d::Identity())).eval();
     const iga::KinematicState rigid = iga::evaluateKinematics(
-        rigidDisplacement, point.physicalGradients);
+        rigidDisplacement, point.referenceGradients);
     const iga::MaterialResponse rigidResponse = material.evaluate(rigid);
     require((rigid.deformationGradient - rotation).norm() < 3e-14,
             "rigid rotation must produce the prescribed F");
@@ -229,16 +229,16 @@ void testKinematicsAndBConventions()
     ControlPointMatrix displacement = 0.04 * space.elementControlPoints(0);
     displacement.col(1) += 0.03 * space.elementControlPoints(0).col(0);
     const iga::KinematicState state = iga::evaluateKinematics(
-        displacement, point.physicalGradients);
+        displacement, point.referenceGradients);
     const iga::MaterialResponse materialResponse = material.evaluate(state);
     const Eigen::Matrix<double, 6, 1> stressVector =
         iga::stressVoigt(materialResponse.secondPiolaStress);
     for (int a = 0; a < space.numElementNodes(); ++a) {
-        const Eigen::Vector3d g = point.physicalGradients.row(a).transpose();
-        const iga::BMatrix nonlinearB =
-            point.linearBMatrices[static_cast<std::size_t>(a)]
+        const Eigen::Vector3d g = point.referenceGradients.row(a).transpose();
+        const iga::BMatrix materialB =
+            point.referenceBMatrices[static_cast<std::size_t>(a)]
             * state.deformationGradient.transpose();
-        const Eigen::Vector3d voigtForce = nonlinearB.transpose() * stressVector;
+        const Eigen::Vector3d voigtForce = materialB.transpose() * stressVector;
         const Eigen::Vector3d tensorForce =
             state.deformationGradient * materialResponse.secondPiolaStress * g;
         require((voigtForce - tensorForce).norm() < 2e-14,
@@ -274,7 +274,7 @@ void testElementTangentByFiniteDifference()
     displacement.col(1) = -0.02 * points.col(1) + 0.015 * points.col(2);
     displacement.col(2) = 0.01 * points.col(0) + 0.025 * points.col(2);
     const iga::ElementResult response =
-        iga::computeElementResponse(space, 0, displacement, material);
+        iga::computeTotalLagrangianElementResponse(space, 0, displacement, material);
     require((response.tangentStiffness - response.tangentStiffness.transpose()).norm()
                 < 2e-13,
             "element tangent must be symmetric");
@@ -292,8 +292,8 @@ void testElementTangentByFiniteDifference()
         const ControlPointMatrix plus = unflattenDisplacements(base + step * direction);
         const ControlPointMatrix minus = unflattenDisplacements(base - step * direction);
         const Eigen::VectorXd difference =
-            (iga::computeElementResponse(space, 0, plus, material).internalForce
-             - iga::computeElementResponse(space, 0, minus, material).internalForce)
+            (iga::computeTotalLagrangianElementResponse(space, 0, plus, material).internalForce
+             - iga::computeTotalLagrangianElementResponse(space, 0, minus, material).internalForce)
             / (2.0 * step);
         const double error = (difference - exact).norm();
         if (level > 0) {
@@ -311,7 +311,7 @@ void testElementResponseAgainstDirectDenseTangent()
     const iga::SaintVenantKirchhoffMaterial material(4.0, 1.5);
     ControlPointMatrix displacement = 0.02 * space.elementControlPoints(0);
     const iga::ElementResult optimized =
-        iga::computeElementResponse(space, 0, displacement, material);
+        iga::computeTotalLagrangianElementResponse(space, 0, displacement, material);
     Eigen::MatrixXd dense = Eigen::MatrixXd::Zero(24, 24);
     for (int q2 = 0; q2 < 2; ++q2) {
         for (int q1 = 0; q1 < 2; ++q1) {
@@ -319,19 +319,19 @@ void testElementResponseAgainstDirectDenseTangent()
                 const iga::ReferencePointData reference =
                     iga::evaluateReferencePoint(space, 0, {q0, q1, q2});
                 const iga::KinematicState state = iga::evaluateKinematics(
-                    displacement, reference.physicalGradients);
+                    displacement, reference.referenceGradients);
                 const iga::MaterialResponse materialResponse = material.evaluate(state);
-                Eigen::Matrix<double, 6, Eigen::Dynamic> nonlinearB(6, 24);
+                Eigen::Matrix<double, 6, Eigen::Dynamic> materialB(6, 24);
                 for (int a = 0; a < 8; ++a) {
-                    nonlinearB.block<6, 3>(0, 3 * a) =
-                        reference.linearBMatrices[static_cast<std::size_t>(a)]
+                    materialB.block<6, 3>(0, 3 * a) =
+                        reference.referenceBMatrices[static_cast<std::size_t>(a)]
                         * state.deformationGradient.transpose();
                 }
                 dense.noalias() += reference.integrationWeight
-                    * nonlinearB.transpose() * materialResponse.materialTangent * nonlinearB;
+                    * materialB.transpose() * materialResponse.materialTangent * materialB;
                 const Eigen::MatrixXd geometric =
-                    (reference.physicalGradients * materialResponse.secondPiolaStress
-                     * reference.physicalGradients.transpose()).eval();
+                    (reference.referenceGradients * materialResponse.secondPiolaStress
+                     * reference.referenceGradients.transpose()).eval();
                 for (int a = 0; a < 8; ++a) {
                     for (int b = 0; b < 8; ++b) {
                         for (int component = 0; component < 3; ++component) {

@@ -1,7 +1,11 @@
 #include "visualization/CantileverExample.h"
 
 #include "mechanics/GlobalNonlinearSystem.h"
+
 #include "mechanics/SaintVenantKirchhoffMaterial.h"
+#include "mechanics/NeoHookeanMaterial.h"
+#include "mechanics/PrincipalStretchMaterial.h"
+
 #include "visualization/BoundarySampler.h"
 
 #include <array>
@@ -79,14 +83,21 @@ CantileverVisualization solveCantileverVisualization(int samplesPerSpan)
 {
     // 功能块 1：建立几何、SVK 材料和沿 -z 的一致体力载荷。
     const nurbs::TensorProductNurbsSpace space = makeCantileverSpace();
-    const iga::SaintVenantKirchhoffMaterial material(0.0, 5.0e6);
+
+    // const iga::SaintVenantKirchhoffMaterial material(0.0, 5.0e6);
+    // const iga::NeoHookeanMaterial material(0.0, 5.0e6);
+    const iga::PrincipalStretchMaterial material(0.0, 5.0e6);
+
     const Eigen::Vector3d gravity(0.0, 0.0, -1.0);
+
     // rho=500 is the already-validated nonlinear self-weight case from the global tests.
     const Eigen::VectorXd force = iga::assembleBodyForce(space, 500.0, gravity);
+
     // 功能块 2：固定 xi-min 端，通过现有 Newton 求解器得到控制点位移。
     iga::NewtonSettings settings;
-    settings.printIterations = false;
+    settings.printIterations = true;
     settings.maxIterations = 30;
+    settings.elementFormulation = iga::ElementFormulation::UpdatedLagrangian;
     const iga::NewtonResult solution = iga::solveDeadLoad(
         space, material, force, iga::collectXiMinFaceDofs(space), settings);
 

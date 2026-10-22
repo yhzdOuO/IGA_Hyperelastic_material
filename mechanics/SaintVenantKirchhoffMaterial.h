@@ -31,6 +31,9 @@ public:
      */
     MaterialResponse evaluate(const KinematicState& kinematics) const override;
 
+    /** @brief 一致推前 TL 响应，得到 Cauchy 应力和空间切线。 */
+    SpatialMaterialResponse evaluateSpatial(const KinematicState& kinematics) const override;
+
 private:
     double lambda_;
     double mu_;

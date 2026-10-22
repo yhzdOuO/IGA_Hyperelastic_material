@@ -7,7 +7,7 @@ namespace iga {
 
 using ConstitutiveMatrix = Eigen::Matrix<double, 6, 6>;
 
-/** @brief 一个材料点上完全由当前位移决定的 Total-Lagrangian 运动学状态。 */
+/** @brief TL/UL 共用的、由总位移决定的材料点运动学状态。 */
 struct KinematicState {
     /// 位移梯度 H=du/dX。
     Eigen::Matrix3d displacementGradient = Eigen::Matrix3d::Zero();
@@ -32,11 +32,47 @@ struct MaterialResponse {
     double strainEnergyDensity = 0.0;
 };
 
+/** @brief 用于当前构形积分的 Cauchy 应力和空间弹性张量。 */
+struct SpatialMaterialResponse {
+    Eigen::Matrix3d cauchyStress = Eigen::Matrix3d::Zero();
+    /**
+     * @brief c=J^{-1} push_forward(C) 的工程剪切 Voigt 矩阵。
+     *
+     * 顺序为 [11,22,33,12,23,13]。它用于 B^T*D*B，需另加初应力刚度；
+     * 不是普通 d(sigma)/d(epsilon)，也不包含 Jaumann 率的应力修正。
+     */
+    ConstitutiveMatrix spatialTangent = ConstitutiveMatrix::Zero();
+    /// 仍为单位参考体积的能量 Psi；当前体积能量密度为 Psi/J。
+    double strainEnergyDensity = 0.0;
+};
+
 /**
- * @brief 无历史变量的 Total-Lagrangian 超弹性材料通用接口。
+ * @brief 构造应力 Voigt 映射 T，使 voigt(A*S*A^T)=T*voigt(S)。
  *
- * 求解器只依赖本接口，不依赖具体材料参数。派生类必须在同一次 evaluate()
- * 调用中返回彼此一致的 S、D 和 Psi，确保 Newton 切线与内力来自同一构形。
+ * 顺序为 [11,22,33,12,23,13]，应力剪切分量不乘 2。
+ * A 可为变形梯度 F 或换基旋转 R；工程剪切切线相应变换为 T*D*T^T。
+ * 本函数只执行张量映射，体积因子由调用者处理。
+ */
+ConstitutiveMatrix voigtStressTransformation(const Eigen::Matrix3d& mapping);
+
+/** @brief 一致推前 S 和 C，要求 F 有限且 det(F)>0。 */
+SpatialMaterialResponse pushForwardMaterialResponse(
+    const MaterialResponse& response, const Eigen::Matrix3d& deformationGradient);
+
+/**
+ * @brief 一致拉回 sigma 和 c，要求 F 有限且 det(F)>0。
+ *
+ * S=J*F^{-1}*sigma*F^{-T}，C=J*pull_back(c)；能量仍按单位参考体积计。
+ */
+MaterialResponse pullBackMaterialResponse(
+    const SpatialMaterialResponse& response, const Eigen::Matrix3d& deformationGradient);
+
+/**
+ * @brief 无历史变量的超弹性材料通用接口，支持参考和空间两种响应。
+ *
+ * 求解器只依赖本接口，不依赖具体材料参数。派生类必须实现两个响应入口，
+ * 可用公式实现其中一个，再用 pushForwardMaterialResponse/pullBackMaterialResponse
+ * 实现另一个；每个入口的应力、相容切线和 Psi 必须彼此一致。
  */
 class HyperelasticMaterial {
 public:
@@ -48,6 +84,13 @@ public:
      * @return 对应的第二 PK 应力、材料相容切线和应变能密度。
      */
     virtual MaterialResponse evaluate(const KinematicState& kinematics) const = 0;
+
+    /**
+     * @brief 计算 Cauchy 应力、空间切线和单位参考体积应变能。
+     *
+     * 可直接使用空间公式，或推前 evaluate() 的结果；须遵守上述空间切线约定。
+     */
+    virtual SpatialMaterialResponse evaluateSpatial(const KinematicState& kinematics) const = 0;
 };
 
 } // namespace iga

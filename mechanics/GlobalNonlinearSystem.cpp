@@ -1,4 +1,5 @@
 #include "mechanics/GlobalNonlinearSystem.h"
+#include "mechanics/UpdatedLagrangianElement.h"
 
 #include <Eigen/SparseCholesky>
 #include <cmath>
@@ -94,10 +95,23 @@ Eigen::VectorXd assembleBodyForce(
 GlobalAssemblyResult assembleInternalSystem(
     const nurbs::TensorProductNurbsSpace& space,
     const Eigen::VectorXd& globalDisplacements,
-    const HyperelasticMaterial& material)
+    const HyperelasticMaterial& material,
+    ElementFormulation formulation)
 {
     validateGlobalVector(space, globalDisplacements,
                          "assembleInternalSystem: global displacement vector is invalid");
+    // 只在单元积分入口选择 TL/UL；后续稀疏散射和残量算法无需区分构形。
+    decltype(&computeTotalLagrangianElementResponse) integrateElement = nullptr;
+    switch (formulation) {
+    case ElementFormulation::TotalLagrangian:
+        integrateElement = &computeTotalLagrangianElementResponse;
+        break;
+    case ElementFormulation::UpdatedLagrangian:
+        integrateElement = &computeUpdatedLagrangianElementResponse;
+        break;
+    default:
+        throw std::invalid_argument("assembleInternalSystem: unknown element formulation");
+    }
     // ---------- 当前位移下的全局切线与内力 ----------
     const int dofs = numDofs(space);
     const int localDofs = 3 * space.numElementNodes();
@@ -115,7 +129,7 @@ GlobalAssemblyResult assembleInternalSystem(
         const nurbs::ControlPointMatrix localDisplacements =
             gatherElementDisplacements(space, element, globalDisplacements);
         const ElementResult local =
-            computeElementResponse(space, element, localDisplacements, material); // &计算一个element的切线刚度矩阵和内力向量
+            integrateElement(space, element, localDisplacements, material);
         const std::vector<int> connectivity = space.elementConnectivity(element); // &计算映射connectivity[local_index] = global_index，其实是IEN(e, a) = A省略了e
         // 用同一套 IEN 同时散射 Ke 的行列和 fe，避免自由度布局不一致。
         for (int a = 0; a < space.numElementNodes(); ++a) {
@@ -240,7 +254,7 @@ bool hasPositiveDeformationJacobians(
                     const ReferencePointData point =
                         evaluateReferencePoint(space, element, {q0, q1, q2});
                     const Eigen::Matrix3d displacementGradient =
-                        localDisplacements.transpose() * point.physicalGradients;
+                        localDisplacements.transpose() * point.referenceGradients;
                     const Eigen::Matrix3d deformationGradient =
                         Eigen::Matrix3d::Identity() + displacementGradient;
                     const double determinant = deformationGradient.determinant();
@@ -302,11 +316,15 @@ NewtonResult solveDeadLoad(
         bool converged = false;
         // 每个载荷步以上一步收敛解为初值，并在 当前载荷因子 下做 Newton 迭代。
         for (int iteration = 1; iteration <= settings.maxIterations; ++iteration) {
+            // —————————————— 切线刚度和残差向量 ——————————————
             const GlobalAssemblyResult assembly = assembleInternalSystem(
-                space, result.displacements, material);
+                space, result.displacements, material, settings.elementFormulation);
             // 残量 R=f_int-f_ext，大小为 N_dof x 1；切线 K=dR/dd=d(f_int)/dd。
             result.residual = assembly.internalForce - currentExternalForce;
-            const double residualNorm = freeDofNorm(result.residual, constrainedDofs);
+
+
+            // —————————————— 收敛判断 ——————————————
+            const double residualNorm = freeDofNorm(result.residual, constrainedDofs); // 除去非自由度后的残差向量模长
             const double convergenceMeasure = externalNorm > 0.0
                 ? residualNorm / externalNorm : residualNorm;
             result.history.push_back(
@@ -324,6 +342,8 @@ NewtonResult solveDeadLoad(
                 break;
             }
 
+
+            // —————————————— 解方程 ——————————————
             // 求解 K*delta_d=-R。SimplicialLDLT 可处理可能不定的对称切线，
             // 且每次 factorization/solve 后都必须检查 Eigen 返回状态。
             const ConstrainedLinearSystem constrained = applyHomogeneousDirichlet(
@@ -338,7 +358,8 @@ NewtonResult solveDeadLoad(
                 throw std::runtime_error("solveDeadLoad: SimplicialLDLT solve failed");
             }
 
-            // ---------- 简易回退线搜索 ----------
+
+            // —————————————— 简易回退线搜索 ——————————————
             // 若完整 Newton 步导致任一积分点 det(F)<=0，则不断把步长减半。
             // F是当前构型x对参考构型X的雅可比，描述了变换的局部，它的行列式＞=0避免了局部翻转。
             double scale = 1.0;

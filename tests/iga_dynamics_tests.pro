@@ -12,6 +12,9 @@ SOURCES += \
     ../nurbs/NurbsAlgorithm.cpp \
     ../nurbs/TensorProductNurbsSpace.cpp \
     ../mechanics/SaintVenantKirchhoffMaterial.cpp \
+    ../mechanics/ElementCommon.cpp \
+    ../mechanics/HyperelasticMaterial.cpp \
+    ../mechanics/UpdatedLagrangianElement.cpp \
     ../mechanics/TotalLagrangianElement.cpp \
     ../mechanics/GlobalNonlinearSystem.cpp \
     ../mechanics/GeneralizedAlphaDynamics.cpp
@@ -24,6 +27,8 @@ HEADERS += \
     ../mechanics/ExternalLoad.h \
     ../mechanics/HyperelasticMaterial.h \
     ../mechanics/SaintVenantKirchhoffMaterial.h \
+    ../mechanics/ElementCommon.h \
+    ../mechanics/UpdatedLagrangianElement.h \
     ../mechanics/TotalLagrangianElement.h \
     ../mechanics/GlobalNonlinearSystem.h \
     ../mechanics/GeneralizedAlphaDynamics.h

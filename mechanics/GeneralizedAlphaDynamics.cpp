@@ -170,7 +170,8 @@ DynamicResidualResult evaluateDynamicResidual(
     const Eigen::VectorXd& nextAcceleration,
     double timeStep,
     const GeneralizedAlphaParameters& parameters,
-    const TimeDependentLoad& externalLoad)
+    const TimeDependentLoad& externalLoad,
+    ElementFormulation formulation)
 {
     const int dofs = numDofs(space);
     validateStateVector(previousState.displacements, dofs, "previous displacements");
@@ -197,7 +198,7 @@ DynamicResidualResult evaluateDynamicResidual(
     result.accelerationAlphaM = previousState.accelerations
         + parameters.alphaM * (nextAcceleration - previousState.accelerations); //&a_{n+α_m}
     const GlobalAssemblyResult assembly = assembleInternalSystem(
-        space, result.displacementAlphaF, material); //& d_{n+α_f}时的K和f^{int}
+        space, result.displacementAlphaF, material, formulation); //& d_{n+α_f}时的K和f^{int}
     // 位移、内力和外载荷取 t_{n+alpha_f}；惯性项单独取 a_{n+alpha_m}。
     const double evaluationTime = previousState.time + parameters.alphaF * timeStep;
     //& R(d_{n+α_f}, a_{n+α_m}) = M*a_{n+α_m} + f^{int}(d_{n+α_f}) - f^{ext}(t)
@@ -218,7 +219,8 @@ Eigen::VectorXd computeInitialAcceleration(
     const SparseMatrix& massMatrix,
     const Eigen::VectorXd& initialDisplacements,
     const std::vector<int>& constrainedDofs,
-    const TimeDependentLoad& externalLoad)
+    const TimeDependentLoad& externalLoad,
+    ElementFormulation formulation)
 {
     const int dofs = numDofs(space);
     validateStateVector(initialDisplacements, dofs, "initial displacements");
@@ -226,7 +228,7 @@ Eigen::VectorXd computeInitialAcceleration(
                                   "initial displacements");
     // ---------- 初始平衡：M*a0=f_ext(0)-f_int(d0) ----------
     const Eigen::VectorXd internalForce = assembleInternalSystem(
-        space, initialDisplacements, material).internalForce;
+        space, initialDisplacements, material, formulation).internalForce;
     const ConstrainedLinearSystem constrained = applyHomogeneousDirichlet(
         massMatrix, checkedLoad(externalLoad, 0.0, dofs) - internalForce,
         constrainedDofs);
@@ -282,7 +284,7 @@ DynamicsResult solveDynamics(
         generalizedAlphaFromSpectralRadius(settings.spectralRadius);
     Eigen::VectorXd acceleration = computeInitialAcceleration(
         space, material, result.massMatrix, initialDisplacements,
-        constrainedDofs, externalLoad);
+        constrainedDofs, externalLoad, settings.elementFormulation);
     // 计算初始时间步的状态
     DynamicState current = makeState(0.0, initialDisplacements, initialVelocities,
                                      acceleration, result.massMatrix, space, material);
@@ -317,7 +319,7 @@ DynamicsResult solveDynamics(
         for (int iteration = 1; iteration <= settings.maxIterations; ++iteration) {
             const DynamicResidualResult dynamic = evaluateDynamicResidual(
                 space, material, result.massMatrix, current, nextAcceleration,
-                dt, parameters, externalLoad);// &M^* R
+                dt, parameters, externalLoad, settings.elementFormulation);// &M^* R
             const double residualNorm = freeDofNorm(dynamic.residual, constrainedDofs); //计算自由度残差
             if (iteration == 1) {
                 initialResidualNorm = residualNorm;
@@ -400,7 +402,7 @@ double computeStrainEnergy(const nurbs::TensorProductNurbsSpace& space,
                     const ReferencePointData reference = evaluateReferencePoint(
                         space, element, {q0, q1, q2});
                     const KinematicState state = evaluateKinematics(
-                        local, reference.physicalGradients);
+                        local, reference.referenceGradients);
                     const MaterialResponse response = material.evaluate(state);
                     if (!std::isfinite(response.strainEnergyDensity)) {
                         throw std::domain_error(

@@ -55,4 +55,10 @@ MaterialResponse SaintVenantKirchhoffMaterial::evaluate(
     return response;
 }
 
+SpatialMaterialResponse SaintVenantKirchhoffMaterial::evaluateSpatial(
+    const KinematicState& kinematics) const
+{
+    return pushForwardMaterialResponse(evaluate(kinematics), kinematics.deformationGradient);
+}
+
 } // namespace iga

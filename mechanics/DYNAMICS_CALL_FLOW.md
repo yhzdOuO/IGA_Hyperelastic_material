@@ -31,7 +31,7 @@ main(argc, argv)                                      main.cpp
                   │  │  ├─ 重建 d_(n+1)
                   │  │  ├─ 形成 d_(n+alpha_f)、a_(n+alpha_m)
                   │  │  ├─ assembleInternalSystem(d_(n+alpha_f))
-                  │  │  │  └─ computeElementResponse() 对所有单元装配
+                  │  │  │  └─ computeTotalLagrangianElementResponse() 对所有单元装配
                   │  │  ├─ R=M*a_am+f_int-f_ext(t_af)
                   │  │  └─ M*=alpha_m*M+alpha_f*beta*dt^2*K_T
                   │  ├─ freeDofNorm() 判断收敛
@@ -132,8 +132,14 @@ v_(n+1) += gamma*dt*Delta_a
 
 | 文件 | 职责 |
 |---|---|
-| `TotalLagrangianElement.*` | 单元 Gauss 积分、运动学、材料响应、`K_e` 和 `f_int,e` |
+| `ElementCommon.*` | TL/UL 共用的运动学、Voigt 工具和单元返回类型 |
+| `HyperelasticMaterial.*` | 参考/空间材料响应，以及默认的应力与切线推前 |
+| `TotalLagrangianElement.*` | 在参考构形 Gauss 积分 `K_e` 和 `f_int,e` |
+| `UpdatedLagrangianElement.*` | 在当前构形 Gauss 积分相同的 `K_e` 和 `f_int,e` |
 | `GlobalNonlinearSystem.*` | 全局装配、边界条件、自由 DOF 范数及静力 Newton |
 | `GeneralizedAlphaDynamics.*` | 一致质量、初始加速度、动态残量、时间步和 Newton 循环 |
 | `DynamicCantileverRunner.*` | 设置示例参数，在后台线程调用动力学入口并发布收敛状态 |
 | `mainwindow.*` | 创建线程、连接信号、读取历史并驱动可视化播放 |
+
+`DynamicsSettings::elementFormulation` 选择 TL 或 UL，默认 TL；该选择同时传入初始
+加速度和每一步的动态残量。全局散射与时间积分算法共用，详见 `UPDATED_LAGRANGIAN.md`。

@@ -13,6 +13,9 @@ SOURCES += \
     ../nurbs/TensorProductNurbsSpace.cpp \
     ../mechanics/NeumannBoundaryLoad.cpp \
     ../mechanics/SaintVenantKirchhoffMaterial.cpp \
+    ../mechanics/ElementCommon.cpp \
+    ../mechanics/HyperelasticMaterial.cpp \
+    ../mechanics/UpdatedLagrangianElement.cpp \
     ../mechanics/TotalLagrangianElement.cpp \
     ../mechanics/GlobalNonlinearSystem.cpp
 
@@ -25,5 +28,7 @@ HEADERS += \
     ../mechanics/HyperelasticMaterial.h \
     ../mechanics/NeumannBoundaryLoad.h \
     ../mechanics/SaintVenantKirchhoffMaterial.h \
+    ../mechanics/ElementCommon.h \
+    ../mechanics/UpdatedLagrangianElement.h \
     ../mechanics/TotalLagrangianElement.h \
     ../mechanics/GlobalNonlinearSystem.h

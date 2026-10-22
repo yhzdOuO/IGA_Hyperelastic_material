@@ -98,6 +98,8 @@ struct DynamicsSettings {
     /// rho_inf；默认 0.8 用于缓慢滤除阶跃载荷激发的高频模态。
     double spectralRadius = 0.8;
     bool printIterations = true;
+    /// 单元内力和切线的积分构形；质量矩阵仍只在参考构形装配一次。
+    ElementFormulation elementFormulation = ElementFormulation::TotalLagrangian;
 };
 
 /// 每次提交已收敛状态后调用；返回 false 可安全提前结束时间循环。
@@ -136,7 +138,8 @@ DynamicResidualResult evaluateDynamicResidual(
     const Eigen::VectorXd& nextAcceleration,
     double timeStep,
     const GeneralizedAlphaParameters& parameters,
-    const TimeDependentLoad& externalLoad);
+    const TimeDependentLoad& externalLoad,
+    ElementFormulation formulation = ElementFormulation::TotalLagrangian);
 
 /**
  * @brief 在自由自由度上求解 M*a_0=f_ext(0)-f_int(d_0)。
@@ -150,7 +153,8 @@ Eigen::VectorXd computeInitialAcceleration(
     const SparseMatrix& massMatrix,
     const Eigen::VectorXd& initialDisplacements,
     const std::vector<int>& constrainedDofs,
-    const TimeDependentLoad& externalLoad);
+    const TimeDependentLoad& externalLoad,
+    ElementFormulation formulation = ElementFormulation::TotalLagrangian);
 
 /**
  * @brief 用 generalized-alpha predictor-multicorrector 推进非线性结构动力学。

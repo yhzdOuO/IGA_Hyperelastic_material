@@ -11,6 +11,12 @@ namespace iga {
 
 using SparseMatrix = Eigen::SparseMatrix<double>;
 
+/** @brief 仅选择单元积分构形；全局自由度、装配和求解算法完全共用。 */
+enum class ElementFormulation {
+    TotalLagrangian,
+    UpdatedLagrangian
+};
+
 struct GlobalAssemblyResult {
     /// 当前全局位移下的 N_dof x N_dof 稀疏一致切线 K_T。
     SparseMatrix tangentStiffness;
@@ -33,6 +39,7 @@ struct NewtonSettings {
     double relativeTolerance = 1.0e-9;
     double absoluteTolerance = 1.0e-12;
     bool printIterations = true;
+    ElementFormulation elementFormulation = ElementFormulation::TotalLagrangian;
 };
 
 /** @brief 静力求解中一次 Newton 迭代的残量记录。 */
@@ -86,12 +93,14 @@ Eigen::VectorXd assembleBodyForce(
  * @param space 提供几何和连接关系的 NURBS patch。
  * @param globalDisplacements 当前交错位移向量，I=3*A+i。
  * @param material 所有单元共用的材料模型。
+ * @param formulation 单元积分形式；默认 TL，UL 返回相同形式的内力和切线。
  * @return 未施加边界条件的稀疏 K_T 与 f_int；静力和动力学共同复用。
  */
 GlobalAssemblyResult assembleInternalSystem(
     const nurbs::TensorProductNurbsSpace& space,
     const Eigen::VectorXd& globalDisplacements,
-    const HyperelasticMaterial& material);
+    const HyperelasticMaterial& material,
+    ElementFormulation formulation = ElementFormulation::TotalLagrangian);
 
 /**
  * @brief 收集 xi 最小控制层上三个方向的全部位移自由度。
